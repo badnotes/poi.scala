@@ -173,7 +173,12 @@ object Workbook {
                 case POICell.CELL_TYPE_BOOLEAN ⇒
                   Some(BooleanCell(index, cell.getBooleanCellValue))
                 case POICell.CELL_TYPE_FORMULA ⇒
-                  Some(FormulaCell(index, cell.getCellFormula))
+                  cell.getCachedFormulaResultType match {
+                    case POICell.CELL_TYPE_FORMULA => Some(NumericCell(index, cell.getNumericCellValue))
+                    case POICell.CELL_TYPE_STRING => Some(StringCell(index, cell.getRichStringCellValue.getString))
+                    case _ => None
+                  }
+                  // Some(FormulaCell(index, cell.getCellFormula))
                 case POICell.CELL_TYPE_STRING  ⇒
                   Some(StringCell(index, cell.getStringCellValue))
                 case _                      ⇒ None
