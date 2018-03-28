@@ -2,8 +2,11 @@ package info.folone.scala.poi
 
 import org.apache.poi._
 import ss.usermodel.{DateUtil, WorkbookFactory, Cell => POICell, CellStyle => POICellStyle, Row => POIRow, Workbook => POIWorkbook}
-import java.io.{ File, FileOutputStream, OutputStream, InputStream }
+import java.io.{File, FileOutputStream, InputStream, OutputStream}
 import java.util.Date
+import java.util.function.Consumer
+
+import org.apache.poi.ss.usermodel
 
 import scalaz._
 import std.map._
@@ -14,7 +17,7 @@ import effect.IO
 
 
 class Workbook(val sheetMap: Map[String, Sheet], format: WorkbookVersion = HSSF) {
-  val sheets: Set[Sheet] = sheetMap.values.toSet
+  val sheets: List[Sheet] = sheetMap.values.toList
 
   private def setPoiCell(defaultRowHeight: Short, row: POIRow, cell: Cell, poiCell: POICell): Unit = {
     cell match {
@@ -120,8 +123,9 @@ class Workbook(val sheetMap: Map[String, Sheet], format: WorkbookVersion = HSSF)
 
 object Workbook {
 
-  def apply(sheets: Set[Sheet], format: WorkbookVersion = HSSF): Workbook =
-    new Workbook(sheets.map( s => (s.name, s)).toMap, format)
+  def apply(sheets: List[Sheet], format: WorkbookVersion = HSSF): Workbook = {
+      new Workbook(sheets.map(s => (s.name, s)).toMap, format)
+  }
 
   def apply(path: String): Result[Workbook] = {
     val action: IO[File] = IO { new File(path) }
@@ -146,13 +150,20 @@ object Workbook {
 
   private def readWorkbook[T](format: WorkbookVersion, workbookF: T => POIWorkbook) = IO { is: T ⇒
     val wb   = workbookF(is)
+    // for sort sheet by index
+    var sheetMap = Map[String,Int]()
+    for (i ← 0 until wb.getNumberOfSheets){
+        val st = wb.getSheetAt(i)
+        if (st != null) sheetMap += (st.getSheetName -> i)
+    }
+
     val data = for {
-      i     ← 0 until wb.getNumberOfSheets
-      sheet = wb.getSheetAt(i) if (sheet != null)
-      k     ← 0 to sheet.getLastRowNum
-      row   = sheet.getRow(k) if (row != null)
-      j     ← 0 until row.getLastCellNum
-      cell  = row.getCell(j) if (cell != null)
+          i     ← 0 until wb.getNumberOfSheets
+          sheet = wb.getSheetAt(i) if (sheet != null)
+          k     ← 0 to sheet.getLastRowNum
+          row   = sheet.getRow(k) if (row != null)
+          j     ← 0 until row.getLastCellNum
+          cell  = row.getCell(j) if (cell != null)
         } yield (sheet, row, cell)
     val result = data.groupBy(_._1).mapValues { lst ⇒
       lst.map { case (s, r, c) ⇒ (r, c)}.groupBy(_._1)
@@ -173,12 +184,7 @@ object Workbook {
                 case POICell.CELL_TYPE_BOOLEAN ⇒
                   Some(BooleanCell(index, cell.getBooleanCellValue))
                 case POICell.CELL_TYPE_FORMULA ⇒
-                  cell.getCachedFormulaResultType match {
-                    case POICell.CELL_TYPE_FORMULA => Some(NumericCell(index, cell.getNumericCellValue))
-                    case POICell.CELL_TYPE_STRING => Some(StringCell(index, cell.getRichStringCellValue.getString))
-                    case _ => None
-                  }
-                  // Some(FormulaCell(index, cell.getCellFormula))
+                  Some(FormulaCell(index, cell.getCellFormula))
                 case POICell.CELL_TYPE_STRING  ⇒
                   Some(StringCell(index, cell.getStringCellValue))
                 case _                      ⇒ None
@@ -187,7 +193,7 @@ object Workbook {
           }
         }.toSet
       }
-    }.toSet
+    }.toList.sortBy(a => sheetMap.get(a.name))
     Workbook(sheets)
   }
 }

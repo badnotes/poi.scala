@@ -68,9 +68,9 @@ trait Instances {
     override def shows(as: Sheet): String = "Sheet (\"" + as.name + "\")(" + as.rows.toIndexedSeq.sortBy(_.index) + ")"
   }
   implicit val wbInstance = new Monoid[Workbook] with Equal[Workbook] with Show[Workbook] {
-    override def zero: Workbook = Workbook(Set[Sheet]())
+    override def zero: Workbook = Workbook(List[Sheet]())
     override def append(f1: Workbook, f2: ⇒ Workbook): Workbook =
-      Workbook(mergeSets(f1.sheets, f2.sheets, (_: Sheet).name))
+      Workbook(mergeLists(f1.sheets, f2.sheets, (_: Sheet).name))
     override def equal(a1: Workbook, a2: Workbook): Boolean =
       (a1.sheets.toIndexedSeq.sortBy((x: Sheet) ⇒ x.name) zip
        a2.sheets.toIndexedSeq.sortBy((x: Sheet) ⇒ x.name))
@@ -84,6 +84,10 @@ trait Instances {
   private def mergeSets[A: Semigroup, B](list1: Set[A], list2: Set[A], on: A ⇒ B): Set[A] =
     combine(list1.map(l ⇒ (on(l), l)).toMap, list2.map(l ⇒ (on(l), l)).toMap)
       .map { case(_, y) ⇒ y }.toSet
+
+  private def mergeLists[A: Semigroup, B](list1: List[A], list2: List[A], on: A ⇒ B): List[A] =
+    combine(list1.map(l ⇒ (on(l), l)).toMap, list2.map(l ⇒ (on(l), l)).toMap)
+      .map { case(_, y) ⇒ y }.toList
 
   private def combine[A, B: Semigroup](m1: Map[A, B], m2: Map[A, B]): Map[A, B] = {
     val k1 = Set(m1.keysIterator.toList: _*)
@@ -114,5 +118,5 @@ trait Lenses {
       store(s.rows) (changed ⇒ Sheet(s.name)(changed))))
   val wbLens    =
     setLensFamily[Workbook, Workbook, Sheet](lens(wb ⇒
-      store(wb.sheets)(changed ⇒ Workbook(changed))))
+      store(wb.sheets.toSet)(changed ⇒ Workbook(changed.toList)))) // to set and to list
 }
